@@ -1,0 +1,31 @@
+# CUDA/PyTorch stack tested by the authors (Python 3.8--3.10).
+# Choose matching builds if your CUDA or Python version differs.
+--extra-index-url https://download.pytorch.org/whl/cu116
+torch==1.12.1+cu116
+torchvision==0.13.1+cu116
+torchaudio==0.12.1+cu116
+
+# Core numerical, image, and HDF5 I/O dependencies.
+numpy
+scipy
+h5py
+mat73
+imageio
+matplotlib
+scikit-image
+scikit-learn
+
+# Training, rendering, and evaluation.
+tensorboard==2.10.1
+nerfacc==0.5.3
+torch-scatter
+lpips
+imgviz
+tqdm
+configargparse
+sparse
+pyyaml
+ninja
+
+# Instant-NGP encoding used by radiance_fields/ngp.py.
+git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
