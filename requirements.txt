@@ -29,3 +29,5 @@ ninja
 
 # Instant-NGP encoding used by radiance_fields/ngp.py.
 git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
+
+#tensorboard --logdir results/scene_30_two_views_10k --port 6006
