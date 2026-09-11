@@ -1,33 +1,34 @@
-# CUDA/PyTorch stack tested by the authors (Python 3.8--3.10).
-# Choose matching builds if your CUDA or Python version differs.
---extra-index-url https://download.pytorch.org/whl/cu116
-torch==1.12.1+cu116
-torchvision==0.13.1+cu116
-torchaudio==0.12.1+cu116
+# Python 3.10-3.13 is recommended.
+#
+# Install this file through ./install_requirements.sh. The script installs a
+# Blackwell-compatible PyTorch build first, then this file, and finally builds
+# tiny-cuda-nn for compute capability 12.0. Keeping CUDA packages out of this
+# file prevents pip from resolving a CPU-only or mismatched PyTorch wheel.
 
-# Core numerical, image, and HDF5 I/O dependencies.
-numpy
-scipy
-h5py
-mat73
-imageio
-matplotlib
-scikit-image
-scikit-learn
+# Numerical, image and HDF5 I/O.
+numpy>=1.26,<3
+scipy>=1.11,<2
+h5py>=3.10,<4
+mat73>=0.65,<1
+imageio>=2.31,<3
+matplotlib>=3.8,<4
+scikit-image>=0.22,<1
+scikit-learn>=1.3,<2
 
-# Training, rendering, and evaluation.
-tensorboard==2.10.1
+# Training, rendering and evaluation. nerfacc 0.5.3 matches the APIs imported
+# by train.py (OccGridEstimator, traverse_grids and ray_aabb_intersect).
+tensorboard>=2.15,<3
 nerfacc==0.5.3
-torch-scatter
-lpips
-imgviz
-tqdm
-configargparse
-sparse
-pyyaml
-ninja
+lpips>=0.1.4,<1
+imgviz>=1.7,<2
+tqdm>=4.66,<5
+configargparse>=1.7,<2
+sparse>=0.15,<1
+PyYAML>=6,<7
+ninja>=1.11,<2
+packaging>=23,<27
+setuptools>=68
 
-# Instant-NGP encoding used by radiance_fields/ngp.py.
-git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
-
-#tensorboard --logdir results/scene_30_two_views_10k --port 6006
+# torch-scatter is intentionally not required. The only scatter_max call in
+# the original project is implemented with torch.scatter_reduce_ instead.
+# tiny-cuda-nn is installed separately after torch by install_requirements.sh.

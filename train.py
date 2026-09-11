@@ -11,7 +11,7 @@ import os
 import torch.multiprocessing as mp
 from multiprocessing import Value
 from ctypes import c_longlong
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from nerfacc.estimators.occ_grid import OccGridEstimator
 import math 
 import scipy.io as sio
@@ -267,8 +267,21 @@ def run():
             torch.save({'step': step, "rays_per_pixel":train_dataset.rep}, os.path.join(outpath, 'variables.pth'))
 
 
-        if not step % 1000:
-            write_summary_histogram(radiance_field, occupancy_grid, writer, test_dataset, step, render_step_size, args)
+        if args.summary_every > 0 and step > 0 and not step % args.summary_every:
+            # A consolidated MITransient scene can have many held-out views,
+            # and each full transient view is ~775 MiB. Keep periodic summaries
+            # bounded; full evaluation remains available through eval.py.
+            summary_count = min(args.summary_num_views, len(test_dataset))
+            summary_dataset = Subset(test_dataset, range(summary_count))
+            write_summary_histogram(
+                radiance_field,
+                occupancy_grid,
+                writer,
+                summary_dataset,
+                step,
+                render_step_size,
+                args,
+            )
 
 
         if step == max_steps:

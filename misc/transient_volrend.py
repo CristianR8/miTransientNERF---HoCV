@@ -3,7 +3,6 @@ import torch
 from torch import Tensor
 from nerfacc.pack import pack_info
 from nerfacc.scan import exclusive_prod, exclusive_sum
-from torch_scatter import scatter_max
 import math 
 
 
@@ -86,7 +85,27 @@ def rendering_transient_single_path(
     )
 
     
-    out, argmax = scatter_max(weights_non_squared, ray_indices, out=torch.zeros(n_rays, device=ray_indices.device))
+    # Native PyTorch replacement for torch_scatter.scatter_max. Avoiding the
+    # external CUDA extension makes installation reliable on Blackwell GPUs.
+    out = torch.zeros(n_rays, device=ray_indices.device, dtype=weights_non_squared.dtype)
+    out.scatter_reduce_(
+        0, ray_indices, weights_non_squared, reduce="amax", include_self=True
+    )
+    sample_indices = torch.arange(
+        weights_non_squared.shape[0], device=ray_indices.device, dtype=torch.long
+    )
+    no_sample = weights_non_squared.shape[0]
+    candidates = torch.where(
+        weights_non_squared == out[ray_indices],
+        sample_indices,
+        torch.full_like(sample_indices, no_sample),
+    )
+    argmax = torch.full(
+        (n_rays,), no_sample, device=ray_indices.device, dtype=torch.long
+    )
+    argmax.scatter_reduce_(
+        0, ray_indices, candidates, reduce="amin", include_self=True
+    )
 
     if t_starts.shape[0]!=0:
         argmax[argmax==weights.shape[0]] = weights.shape[0]-1

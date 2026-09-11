@@ -3,6 +3,7 @@ import json
 import os
 
 import imageio.v2 as imageio
+import h5py
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -62,17 +63,17 @@ def _mitsuba_view_split(num_cameras: int, num_views: int):
 
 
 def _mitsuba_transient_max(path: str):
-    """Find the global transient maximum without materialising the 20+ GB volume."""
+    """Find the global transient maximum one HDF5 chunk/view at a time."""
     if path in _MITSUBA_MAX_CACHE:
         return _MITSUBA_MAX_CACHE[path]
 
     max_value = 0.0
     with h5py.File(path, "r") as data:
         transients = data["transients"]
-        # 32 bins is about 25 MB per read at this dataset's resolution.
+        # MITransient files are chunked as one complete view. Reading 32-bin
+        # slices would therefore decompress the same ~775 MiB chunk repeatedly.
         for view_id in range(transients.shape[0]):
-            for start in range(0, transients.shape[3], 32):
-                max_value = max(max_value, float(np.max(transients[view_id, :, :, start:start + 32, :])))
+            max_value = max(max_value, float(np.max(transients[view_id])))
     if not np.isfinite(max_value) or max_value <= 0:
         raise ValueError(f"Invalid transient maximum in {path}: {max_value}")
     _MITSUBA_MAX_CACHE[path] = max_value
@@ -302,6 +303,7 @@ class SubjectLoaderTransient(torch.utils.data.Dataset):
                         f"Configured n_bins={self.n_bins}, but {self._mitsuba_path} contains "
                         f"{transients.shape[3]} bins. Set n_bins to that value."
                     )
+                transient_shape = tuple(transients.shape)
                 poses = np.asarray(poses)
 
             train_ids, test_ids = _mitsuba_view_split(poses.shape[0], num_views)
@@ -318,6 +320,16 @@ class SubjectLoaderTransient(torch.utils.data.Dataset):
             # from the pose matrices.
             self.focal = 0.5 * self.HEIGHT / np.tan(np.deg2rad(60.0) / 2.0)
             self.max = torch.tensor(_mitsuba_transient_max(self._mitsuba_path), dtype=torch.float32)
+            self._mitsuba_train_cache = None
+            if self.training:
+                # The source file stores each entire view in one compressed
+                # chunk. Cache only the sparse training views in host RAM so a
+                # random ray does not decompress a 775 MiB chunk on every read.
+                cache_shape = (len(self.view_ids),) + transient_shape[1:]
+                self._mitsuba_train_cache = np.empty(cache_shape, dtype=np.float32)
+                with h5py.File(self._mitsuba_path, "r") as data:
+                    for local_view, source_view in enumerate(self.view_ids):
+                        self._mitsuba_train_cache[local_view] = data["transients"][source_view]
             # Preserve the existing public attribute. Pixels are fetched from
             # disk on demand so the 20+ GB HDF5 volume is never loaded at once.
             self.images = torch.empty(0, dtype=torch.float32)
@@ -366,6 +378,10 @@ class SubjectLoaderTransient(torch.utils.data.Dataset):
         image_id = image_id.detach().cpu().numpy().astype(np.int64)
         x = x.detach().cpu().numpy().astype(np.int64)
         y = y.detach().cpu().numpy().astype(np.int64)
+        if self._mitsuba_train_cache is not None:
+            output = self._mitsuba_train_cache[image_id, y, x]
+            return torch.from_numpy(np.asarray(output)) / self.max
+
         output = np.empty((len(image_id), self.n_bins, 3), dtype=np.float32)
         # Repeated samples (from spatial-filter replication) need only one HDF5
         # read. h5py point indexing is restrictive, so use scalar reads for the

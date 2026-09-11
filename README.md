@@ -36,15 +36,21 @@ El cargador usa experimentos de 2, 3 o 5 vistas para entrenar y reserva las dem�
 
 ## Instalación
 
-El código original fue probado con Python 3.8--3.10 y CUDA 11.6. Cree un entorno virtual e instale las dependencias:
+Para la RTX PRO 6000 Blackwell use Python 3.10--3.13 y cargue CUDA 12.8 o 13.0. El instalador detecta la versión de `nvcc`, crea `.venv`, instala PyTorch 2.10 desde el canal CUDA correspondiente y compila `tiny-cuda-nn` para `sm_120`:
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+# Si el clúster usa módulos, el nombre exacto puede variar.
+module load cuda/12.8
+./install_requirements.sh
 ```
 
-Si su versión de CUDA o Python es diferente, instale una versión compatible de PyTorch, torchvision, torchaudio, tiny-cuda-nn y torch-scatter antes de ejecutar el entrenamiento.
+Para usar otra versión de Python o ubicación del entorno:
+
+```bash
+PYTHON_VERSION=3.12 VENV_PATH="$PWD/venv" ./install_requirements.sh
+```
+
+No instale directamente el stack original PyTorch 1.12/CUDA 11.6: no contiene kernels para Blackwell. `torch-scatter` ya no es necesario; el proyecto usa la operación equivalente incluida en PyTorch.
 
 ## Entrenamiento recomendado
 

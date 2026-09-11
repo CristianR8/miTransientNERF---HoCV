@@ -221,6 +221,18 @@ def load_args(eval = False, parser= None):
         help="Steps per checkpoint.",
     )
     parser.add_argument(
+        "--summary_every",
+        type=int,
+        default=1000,
+        help="Write TensorBoard image summaries every N steps; use 0 to disable.",
+    )
+    parser.add_argument(
+        "--summary_num_views",
+        type=int,
+        default=1,
+        help="Maximum number of held-out views rendered in each periodic summary.",
+    )
+    parser.add_argument(
         "--n_bins",
         type=int,
         default=1200,
