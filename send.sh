@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REMOTE="${REMOTE:-cvail-emergency}"
+REMOTE="${REMOTE:-cvail}"
 REMOTE_DIR="${REMOTE_DIR:-~/miTransientNERF}"
 DESTINATION="${REMOTE}:${REMOTE_DIR%/}/"
 

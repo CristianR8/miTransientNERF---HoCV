@@ -9,7 +9,7 @@ VENV_PATH="${VENV_PATH:-$PROJECT_ROOT/.venv}"
 
 if ! command -v nvcc >/dev/null 2>&1; then
     echo "nvcc was not found. Load a CUDA 12.8 or CUDA 13.0 toolkit module first." >&2
-    echo "Example: module load cuda/12.8" >&2
+    echo "Run 'module spider cuda' to find the toolkit module names available on your cluster." >&2
     exit 1
 fi
 
@@ -28,7 +28,8 @@ if [[ ! -x "$VENV_PATH/bin/python" ]]; then
 fi
 PYTHON_BIN="$VENV_PATH/bin/python"
 
-"$PYTHON_BIN" -m pip install --upgrade pip setuptools wheel
+# Keep pkg_resources available for tiny-cuda-nn's setup.py.
+"$PYTHON_BIN" -m pip install --upgrade pip "setuptools>=68,<81" wheel "ninja>=1.11,<2" "packaging>=23,<27"
 
 # PyTorch 2.10 is available for both CUDA channels and supports Python
 # 3.10-3.14. torchvision 0.25 is its matching domain-library release.
@@ -36,14 +37,11 @@ PYTHON_BIN="$VENV_PATH/bin/python"
     torch==2.10.0 torchvision==0.25.0 \
     --index-url "https://download.pytorch.org/whl/$CUDA_CHANNEL"
 
-"$PYTHON_BIN" -m pip install -r requirements.txt
-
 # Build only for the workstation's RTX PRO 6000 Blackwell (sm_120). Disabling
 # build isolation ensures tiny-cuda-nn can import the torch installed above.
 export TCNN_CUDA_ARCHITECTURES=120
 export TORCH_CUDA_ARCH_LIST=12.0
-"$PYTHON_BIN" -m pip install --no-build-isolation \
-    "git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch"
+"$PYTHON_BIN" -m pip install --no-build-isolation -r requirements.txt
 
 "$PYTHON_BIN" - <<'PY'
 import h5py

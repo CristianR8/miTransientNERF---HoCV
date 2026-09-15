@@ -1,9 +1,9 @@
 # Python 3.10-3.13 is recommended.
 #
 # Install this file through ./install_requirements.sh. The script installs a
-# Blackwell-compatible PyTorch build first, then this file, and finally builds
-# tiny-cuda-nn for compute capability 12.0. Keeping CUDA packages out of this
-# file prevents pip from resolving a CPU-only or mismatched PyTorch wheel.
+# Blackwell-compatible PyTorch build first, then installs this file with
+# --no-build-isolation to compile tiny-cuda-nn for compute capability 12.0.
+# A CUDA toolkit with nvcc and build tools must already be installed.
 
 # Numerical, image and HDF5 I/O.
 numpy>=1.26,<3
@@ -27,8 +27,10 @@ sparse>=0.15,<1
 PyYAML>=6,<7
 ninja>=1.11,<2
 packaging>=23,<27
-setuptools>=68
+# tiny-cuda-nn's setup.py still imports pkg_resources.
+setuptools>=68,<81
 
 # torch-scatter is intentionally not required. The only scatter_max call in
 # the original project is implemented with torch.scatter_reduce_ instead.
-# tiny-cuda-nn is installed separately after torch by install_requirements.sh.
+# Requires PyTorch before installation; use --no-build-isolation.
+tinycudann @ git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch

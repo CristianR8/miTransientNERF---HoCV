@@ -5,18 +5,28 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=6
 #SBATCH --mem=16G
-#SBATCH --time=03:00:00
+#SBATCH --time=04:30:00
 #SBATCH --output=slurm-%x-%j.out
 
 set -euo pipefail
 
-PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-cd "$PROJECT_ROOT"
+# Slurm runs a spooled copy of this script; use the submission directory.
+PROJECT_ROOT="${SLURM_SUBMIT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)}"
+cd "$PROJECT_ROOT" || exit 1
+
+echo "Usuario: $(whoami)"
+echo "Nodo: $(hostname)"
+echo "Directorio: $(pwd)"
+ls -ld .
+if [[ -e results ]]; then
+    ls -ld results
+fi
+mkdir -p results || exit 1
 
 export PYTHONUNBUFFERED=1
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
 export MPLCONFIGDIR="${TMPDIR:-/tmp}/matplotlib-${SLURM_JOB_ID:-local}"
-mkdir -p "$MPLCONFIGDIR" results
+mkdir -p "$MPLCONFIGDIR"
 
 # Create .venv once on a GPU/login node with ./install_requirements.sh.
 # Override when submitting if needed:
