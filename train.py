@@ -39,6 +39,7 @@ def run():
     aabb = torch.tensor(args.aabb, dtype=torch.float32, device=device)
     train_dataset_kwargs = {}
     test_dataset_kwargs = {}
+    train_summary_dataset = None
 
     # setup the dataset
     rfilter_sigma = args.rfilter_sigma
@@ -79,6 +80,18 @@ def run():
             test_dataset.images = test_dataset.images.to(device)
         test_dataset.camtoworlds = test_dataset.camtoworlds.to(device)
         test_dataset.K = test_dataset.K.to(device)
+
+        if args.summary_train_views > 0:
+            train_summary_dataset = SubjectLoader(
+                root_fp=args.data_root_fp,
+                subject_id=args.exp_name,
+                split="train",
+                num_rays=None,
+                **train_dataset_kwargs,
+                num_views=args.num_views,
+            )
+            train_summary_dataset.camtoworlds = train_summary_dataset.camtoworlds.to(device)
+            train_summary_dataset.K = train_summary_dataset.K.to(device)
     else:
         from loaders.loader_captured import LearnRays, SubjectLoaderTransientReal as SubjectLoader
         params = np.load(args.intrinsics, allow_pickle=True)[()]
@@ -249,7 +262,11 @@ def run():
 
         pixs = torch.log(pixs + 1)
         rgb = torch.log(rgb + 1)
-        loss = torch.nn.functional.l1_loss(rgb[alive_ray_mask], pixs[alive_ray_mask]) + comp_weights*args.space_carving
+        loss_l1 = torch.nn.functional.l1_loss(
+            rgb[alive_ray_mask], pixs[alive_ray_mask]
+        )
+        loss_space_carving = comp_weights * args.space_carving
+        loss = loss_l1 + loss_space_carving
 
 
         optimizer.zero_grad()
@@ -257,7 +274,11 @@ def run():
         optimizer.step()
         scheduler.step()
 
-        writer.add_scalar('Loss/train', loss.detach().cpu().numpy(), step)
+        writer.add_scalar("Loss/train_total", loss.detach().item(), step)
+        writer.add_scalar("Loss/train_l1", loss_l1.detach().item(), step)
+        writer.add_scalar(
+            "Loss/train_space_carving", loss_space_carving.detach().item(), step
+        )
 
         if not step % args.steps_til_checkpoint:
             torch.save(radiance_field.state_dict(), os.path.join(outpath, 'radiance_field_%04d.pth' % (step)))
@@ -281,7 +302,26 @@ def run():
                 step,
                 render_step_size,
                 args,
+                dataset_label="test",
             )
+
+            if train_summary_dataset is not None:
+                train_summary_count = min(
+                    args.summary_train_views, len(train_summary_dataset)
+                )
+                train_summary_subset = Subset(
+                    train_summary_dataset, range(train_summary_count)
+                )
+                write_summary_histogram(
+                    radiance_field,
+                    occupancy_grid,
+                    writer,
+                    train_summary_subset,
+                    step,
+                    render_step_size,
+                    args,
+                    dataset_label="train",
+                )
 
 
         if step == max_steps:

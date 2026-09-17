@@ -233,6 +233,12 @@ def load_args(eval = False, parser= None):
         help="Maximum number of held-out views rendered in each periodic summary.",
     )
     parser.add_argument(
+        "--summary_train_views",
+        type=int,
+        default=0,
+        help="Number of full training views rendered in each periodic summary (simulated datasets).",
+    )
+    parser.add_argument(
         "--n_bins",
         type=int,
         default=1200,

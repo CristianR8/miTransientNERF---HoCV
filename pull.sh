@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REMOTE_BASE="cvail:~/tracer_project"
+REMOTE_BASE="cvail:~/miTransientNERF/results"
 LOCAL_DEST="."
 
 if [ "$#" -lt 1 ]; then

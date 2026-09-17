@@ -7,7 +7,16 @@ import torch
 import os 
 
 @torch.no_grad()
-def write_summary_histogram(radiance_field, occupancy_grid, writer, test_dataset, step, render_step_size, args):
+def write_summary_histogram(
+    radiance_field,
+    occupancy_grid,
+    writer,
+    dataset,
+    step,
+    render_step_size,
+    args,
+    dataset_label="test",
+):
     img_scale = args.img_scale
     radiance_field.eval()
     occupancy_grid.eval()
@@ -22,7 +31,7 @@ def write_summary_histogram(radiance_field, occupancy_grid, writer, test_dataset
 
     plotting_transients_gt = []
 
-    test_list = list(range(len(test_dataset)))
+    view_list = list(range(len(dataset)))
     # if args.version == "simulated":
     #     color_channels = 3
     # else:
@@ -31,8 +40,10 @@ def write_summary_histogram(radiance_field, occupancy_grid, writer, test_dataset
     with torch.no_grad():
 
         # sample transients from network
-        for ind, i in enumerate(test_list):
-            data = test_dataset[i]
+        transient_l1_sum = 0.0
+        transient_value_count = 0
+        for ind, i in enumerate(view_list):
+            data = dataset[i]
             render_bkgd = data["color_bkgd"]
             rays = data["rays"]
             pixels = data["pixels"]
@@ -58,8 +69,20 @@ def write_summary_histogram(radiance_field, occupancy_grid, writer, test_dataset
 
             rgb = rgb.reshape(rays.origins.shape[0], rays.origins.shape[1], -1, 3)
 
-            torch.save(rgb, os.path.join(args.outpath, f"test_{ind}_conv.pt"))
-            torch.save(depth, os.path.join(args.outpath, f"test_{ind}_depth.pt"))
+            torch.save(rgb, os.path.join(args.outpath, f"{dataset_label}_{ind}_conv.pt"))
+            torch.save(depth, os.path.join(args.outpath, f"{dataset_label}_{ind}_depth.pt"))
+
+            # Match the photometric term used for training, but evaluate the
+            # complete rendered view. Chunk the temporal axis to avoid two
+            # additional full-size transient tensors in GPU memory.
+            for bin_start in range(0, rgb.shape[-2], 64):
+                bin_stop = min(bin_start + 64, rgb.shape[-2])
+                pred_chunk = rgb[..., bin_start:bin_stop, :]
+                gt_chunk = pixels[..., bin_start:bin_stop, :]
+                transient_l1_sum += torch.abs(
+                    torch.log1p(pred_chunk) - torch.log1p(gt_chunk)
+                ).sum().item()
+                transient_value_count += pred_chunk.numel()
 
             # if color_channels ==1:
             #     gt_imgs.append(torch.clip(pixels.sum(-2).cpu().repeat(1, 1, 3).permute(2, 0, 1)/img_scale, 0, 1)**(1/2.2))
@@ -78,11 +101,16 @@ def write_summary_histogram(radiance_field, occupancy_grid, writer, test_dataset
                     plotting_transients_depth.append(depth[pixel[0], pixel[1]])
 
 
-        images = torchvision.utils.make_grid(torch.stack(gt_imgs + rgb_images + depth_images + accs), nrow=len(test_list), normalize=False)
+        images = torchvision.utils.make_grid(torch.stack(gt_imgs + rgb_images + depth_images + accs), nrow=len(view_list), normalize=False)
         mse = torch.mean((torch.stack(gt_imgs, dim=0) - torch.stack(rgb_images, dim=0))**2, (1,2,3))
         psnr = -10.0 * torch.log(mse) / np.log(10.0)
-        print(f"image psnr: {psnr.mean():.2f}\n")
-        writer.add_image('rgbdn', images, step)
+        print(f"{dataset_label} image psnr: {psnr.mean():.2f}\n")
+        writer.add_image(f"{dataset_label}/rgbdn", images, step)
+        writer.add_scalar(
+            f"Loss_eval/{dataset_label}_l1",
+            transient_l1_sum / transient_value_count,
+            step,
+        )
 
         figure = plt.figure(figsize=((len(pixels_to_plot)+1), 4), dpi=250)
 
@@ -111,7 +139,8 @@ def write_summary_histogram(radiance_field, occupancy_grid, writer, test_dataset
             plt.gca().set_aspect(1.0 / plt.gca().get_data_ratio(), adjustable='box')
         
         plt.tight_layout()
-        writer.add_figure("transient_plots", figure, step)
+        writer.add_figure(f"{dataset_label}/transient_plots", figure, step)
+        plt.close(figure)
 
 
     radiance_field.train()

@@ -1,32 +1,23 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=tnrf-scene1
+#SBATCH --job-name=tnrf-scene500k
 #SBATCH --account=crisr
 #SBATCH --partition=gpu-cvail01
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=6
 #SBATCH --mem=16G
-#SBATCH --time=04:30:00
+#SBATCH --time=05:30:00
 #SBATCH --output=slurm-%x-%j.out
 
 set -euo pipefail
 
-# Slurm runs a spooled copy of this script; use the submission directory.
-PROJECT_ROOT="${SLURM_SUBMIT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)}"
-cd "$PROJECT_ROOT" || exit 1
-
-echo "Usuario: $(whoami)"
-echo "Nodo: $(hostname)"
-echo "Directorio: $(pwd)"
-ls -ld .
-if [[ -e results ]]; then
-    ls -ld results
-fi
-mkdir -p results || exit 1
+PROJECT_ROOT="${SLURM_SUBMIT_DIR:-$(pwd)}"
+cd "$PROJECT_ROOT"
 
 export PYTHONUNBUFFERED=1
+export PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
 export MPLCONFIGDIR="${TMPDIR:-/tmp}/matplotlib-${SLURM_JOB_ID:-local}"
-mkdir -p "$MPLCONFIGDIR"
+mkdir -p "$MPLCONFIGDIR" results
 
 # Create .venv once on a GPU/login node with ./install_requirements.sh.
 # Override when submitting if needed:
@@ -41,11 +32,20 @@ else
     PYTHON_BIN="$(command -v python3)"
 fi
 
+CUDA_ENV="${CUDA_ENV:-$HOME/.conda/envs/mitra-build}"
+[[ -x "$CUDA_ENV/bin/nvcc" ]] || {
+    echo "CUDA compiler not found: $CUDA_ENV/bin/nvcc" >&2
+    exit 1
+}
+export CUDA_HOME="$CUDA_ENV"
+export PATH="$CUDA_HOME/bin:$PATH"
+export TORCH_CUDA_ARCH_LIST="12.0"
+
 CONFIG="$PROJECT_ROOT/configs/train/simulated/scene_1_5views.ini"
 DATASET="$PROJECT_ROOT/data/scene_1.h5"
-MAX_STEPS="${MAX_STEPS:-10000}"
-SUMMARY_EVERY="${SUMMARY_EVERY:-2000}"
-CHECKPOINT_EVERY="${CHECKPOINT_EVERY:-2000}"
+MAX_STEPS="${MAX_STEPS:-500000}"
+SUMMARY_EVERY="${SUMMARY_EVERY:-50000}"
+CHECKPOINT_EVERY="${CHECKPOINT_EVERY:-50000}"
 RUN_NAME="${RUN_NAME:-scene_1_5views_${SLURM_JOB_ID:-local}}"
 
 [[ -f "$CONFIG" ]] || { echo "Missing config: $CONFIG" >&2; exit 1; }
@@ -58,6 +58,8 @@ echo "Dataset:    $DATASET"
 echo "Run name:   $RUN_NAME"
 echo "Max steps:  $MAX_STEPS"
 echo "Checkpoint: every $CHECKPOINT_EVERY steps"
+echo "CUDA compiler: $CUDA_HOME/bin/nvcc"
+nvcc --version
 nvidia-smi
 
 # Fail early if the environment, GPU, or copied HDF5 file is not usable.
@@ -66,6 +68,7 @@ import h5py
 import torch
 import nerfacc
 import tinycudann
+from misc.summary import write_summary_histogram
 from radiance_fields.ngp import NGPRadianceField
 
 assert torch.cuda.is_available(), "PyTorch cannot see the Slurm GPU"
@@ -79,7 +82,7 @@ print("Compute capability:", torch.cuda.get_device_capability(0))
 print("Dataset metadata and training imports: OK")
 PY
 
-srun "$PYTHON_BIN" train.py \
+"$PYTHON_BIN" "$PROJECT_ROOT/train.py" \
     -c "$CONFIG" \
     --device cuda:0 \
     --max_steps "$MAX_STEPS" \
